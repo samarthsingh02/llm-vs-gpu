@@ -1,0 +1,13 @@
+{
+  "gpu_name": "NVIDIA GeForce RTX 3050 6GB Laptop GPU",
+  "sm_count": 20,
+  "warp_size": 32,
+  "regs_per_sm": 65536,
+  "shared_mem_per_sm_kb": 100,
+  "total_global_mem_mb": 6143,
+  "mem_bus_width_bits": 96,
+  "fp32_peak_tflops": 9.0,
+  "mem_bandwidth_gbps": 192,
+  "driver_version": "581.29",
+  "cuda_version": "13.0"
+}
