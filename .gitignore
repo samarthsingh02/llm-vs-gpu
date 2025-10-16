@@ -13,3 +13,6 @@ __pycache__/
 
 # Executables
 *.exe
+
+# Ignore benchmark outputs
+data/benchmark_results.csv
