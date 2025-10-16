@@ -3,16 +3,40 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
-*.so
-
-# Virtual environment
+*.env
 .venv/
+env/
+venv/
+*.egg-info/
 
-# VSCode
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# VS Code
 .vscode/
 
-# Executables
-*.exe
+# OS files
+.DS_Store
+Thumbs.db
 
-# Ignore benchmark outputs
-data/benchmark_results.csv
+# Build artifacts
+build/
+*.exe
+*.out
+*.obj
+*.o
+*.log
+
+# Data & models
+data/
+*.csv
+*.h5
+*.pt
+*.pth
+
+# Reports
+report/Report.pdf
+
+# Any local credentials
+*.json
+*.key
