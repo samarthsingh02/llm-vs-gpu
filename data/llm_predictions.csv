@@ -1,0 +1,30 @@
+kernel,label,rationale
+01_saxpy,API_ERROR,"Invalid operation: The `response.text` quick accessor requires the response to contain a valid `Part`, but none were returned. The candidate's [finish_reason](https://ai.google.dev/api/generate-content#finishreason) is 2."
+02_naive_matmul,MEMORY-BOUND,"The kernel performs a SAXPY operation. For each thread, it executes 2 floating-point operations (one multiplication, one addition) and accesses 12 bytes of memory (reading two floats from x and y, writing one float to y). This gives an operational intensity of 2 FLOPs / 12 Bytes ≈ 0.167 FLOPs/Byte. The GPU's machine balance is 9.0 TFLOPs / 192 GB/s ≈ 47 FLOPs/Byte. Since the kernel's operational intensity is far below the machine balance, its performance is dictated by the speed at which data can be supplied from memory, making it memory-bound."
+03_naive_transpose,API_ERROR,"Invalid operation: The `response.text` quick accessor requires the response to contain a valid `Part`, but none were returned. The candidate's [finish_reason](https://ai.google.dev/api/generate-content#finishreason) is 2."
+04_tiled_transpose,ERROR,"Failed to parse JSON. Raw response: ```json
+{
+  ""label"": ""MEMORY-BOUND"",
+  ""rationale"": ""The kernel performs a SAXPY operation. For each element, it executes 2 floating-point operations (one multiply, one add) and requires 12 bytes of memory traffic (two 4-byte reads from x and y, one 4-byte write to y). This gives an operational intensity of 2 FLOPs / 12 Bytes ≈ 0.1"
+05_bank_conflict,ERROR,"Failed to parse JSON. Raw response: ```json
+{
+  ""label"": ""MEMORY-BOUND"",
+  ""rationale"": ""The kernel performs a SAXPY (Single-precision A*X Plus Y) operation. For each thread, it executes 2 floating-point operations (one multiplication and one addition). In the same process, it accesses 12 bytes of global memory: reading a 4-byte float from x, reading a 4-byte float from y, and writing a 4"
+06_strided_global,ERROR,"Failed to parse JSON. Raw response: ```json
+{
+  ""label"": ""MEMORY-BOUND"",
+  ""rationale"": ""The kernel performs a SAXPY operation (y = a*x + y). For each thread, it reads two floats (x[i] and y[i]) and writes one float (y[i]), resulting in 12 bytes of global memory traffic. It performs one multiplication and one addition, for a total of 2 FLOPs. This gives an operational intensity of 2 FLOPs / 12 Bytes ≈ 0.17 FLOPs/Byte. The GPU's balance point is its compute throughput divided by its memory bandwidth (9.0e12 FLOPs/s /"
+07_branch_divergence,MEMORY-BOUND,"The kernel's operational intensity (FLOPs per byte of memory access) is very low. For each thread, it performs 2 floating-point operations (one multiply, one add) and accesses 12 bytes of global memory (a 4-byte read from x, a 4-byte read from y, and a 4-byte write to y). This gives an operational intensity of 2 FLOPs / 12 Bytes ≈ 0.167 FLOPs/Byte. The GPU's balance point is 9.0 TFLOPs / 192 GB/s ≈ 46.9 FLOPs/Byte. Since the kernel's intensity is significantly lower than the machine's balance point, performance is dictated by the speed of memory access, making it memory-bound."
+08_atomic_histogram,ERROR,"Failed to parse JSON. Raw response: ```json
+{
+  ""label"": ""MEMORY-BOUND"",
+  ""ration"
+09_high_reg_pressure,ERROR,"Failed to parse JSON. Raw response: ```json
+{
+  ""label"": ""MEMORY-BOUND"",
+  ""rationale"": ""The kernel's operational intensity (ratio of floating-point operations to bytes accessed) is very low. For each thread, the kernel performs 2 FLOPs (a fused multiply-add) and accesses 12 bytes of global memory (two 4-byte reads for x[i] and y[i], and one 4-byte write for y[i]). This results in an operational intensity of 2 FLOPs / 12 Bytes ≈ 0.167 FLOPs/Byte. The GPU's balance point is the ratio of its peak compute"
+10_parallel_reduction,MEMORY-BOUND,"The kernel's performance is determined by its operational intensity (FLOPs/Byte) relative to the GPU's machine balance. The GPU's balance is 9.0 TFLOPs / 192 GB/s ≈ 47 FLOPs/Byte. For each thread, the SAXPY kernel performs 2 floating-point operations (1 multiplication, 1 addition) and accesses 12 bytes of global memory (reading x[i] and y[i], writing y[i]). This results in an operational intensity of 2 FLOPs / 12 Bytes ≈ 0.17 FLOPs/Byte. Since the kernel's operational intensity (0.17) is significantly lower than the machine's balance point (47), the execution time is dominated by waiting for data from memory, making it memory-bound."
+11_tiled_matmul,ERROR,"Failed to parse JSON. Raw response: ```json
+{
+  ""label"": ""MEMORY-BOUND"",
+  ""rationale"": ""The kernel performs a SAXPY operation (y = a*x + y). For each thread, this involves 2 floating-point operations (1 multiply, 1 add) and 3 memory transactions (reading x[i], reading y[i], writing y[i]). Assuming 4-byte floats, this is 2 FLOPs for every 12 bytes of data moved. The operational intensity is therefore 2 FLOPs / 12 Bytes ≈ 0.167 FLOPs/Byte. The machine's balance is 9.0 TFLOPs / 192 GB/s ≈ 46.9 FLOPs"

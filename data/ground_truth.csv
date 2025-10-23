@@ -1,0 +1,11 @@
+kernel_name,ground_truth_label
+saxpy,Memory-Bound
+naive_matmul,Compute-Bound
+naive_transpose,Latency-Bound
+tiled_transpose,Memory-Bound
+bank_conflict,Latency-Bound
+strided_global,Latency-Bound
+branch_divergence,Latency-Bound
+atomic_histogram,Latency-Bound
+high_reg_pressure,Latency-Bound
+parallel_reduction,Memory-Bound

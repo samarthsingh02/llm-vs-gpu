@@ -7,9 +7,7 @@ import re
 
 # Configure the API key
 try:
-    # IMPORTANT: REPLACE "YOUR_API_KEY" with your actual Google AI Studio API key.
-    # You can store it in an environment variable GOOGLE_API_KEY for better security
-    api_key = os.getenv("GOOGLE_API_KEY", "AIzaSyDVh4IPfQnIHnxvEavjTRORk9rpFjEjr2s")  # Prioritize environment variable
+    api_key = os.getenv("GOOGLE_API_KEY")
     if api_key == "YOUR_API_KEY":
         print("Warning: Using placeholder API key. Replace 'YOUR_API_KEY'.")
     genai.configure(api_key=api_key)
