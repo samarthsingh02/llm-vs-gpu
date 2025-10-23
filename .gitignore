@@ -27,16 +27,22 @@ build/
 *.o
 *.log
 
-# Data & models
-data/
-*.csv
+# Data & models (Keep data/llm_predictions.csv if you want to track it)
+# data/ # Commented out if you want to track ground_truth.csv and llm_predictions.csv
+# *.csv
 *.h5
 *.pt
 *.pth
 
-# Reports
-report/Report.pdf
+# Reports (Original section)
+# report/Report.pdf # Assuming you might create a final PDF report here
+
+# --- ADDED ---
+# Nsight Compute Reports & Analysis
+*.ncu-rep
+nsight_analysis/
+# --- END ADDED ---
 
 # Any local credentials
-*.json
+*.json # Be careful: this ignores hw_specs.json too. Consider removing or being more specific.
 *.key
