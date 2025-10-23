@@ -1,0 +1,46 @@
+Excellent! 🎉 Now for the analysis. Nsight Compute's `--set full` report is incredibly detailed. Let's focus on comparing `naive_matmul` (kernel #2) and `tiled_matmul` (kernel #11) to see the impact of your optimization.
+
+Here's what to look for in the Nsight Compute GUI:
+
+***
+
+## 1. Summary Page
+
+* **Select Kernels:** In the **Report** section (usually top left), make sure only `naive_matmul` and `tiled_matmul` are selected (or select them one at a time) so you're comparing the right things.
+* **Kernel Duration:** Note the **Duration** for both kernels. You should see a significant reduction for `tiled_matmul`. This is your primary measure of improvement.
+* **Top Limiters:** Look at the **GPU Speed of Light (SOL)** section.
+    * For `naive_matmul`, what percentage is Memory Bound vs. Compute Bound? It should be heavily Memory Bound.
+    * For `tiled_matmul`, has this percentage shifted? Is it more Compute Bound now?
+* **Occupancy:** Check the **Launch Statistics** section for **Theoretical Occupancy**. Tiled matrix multiply often uses more registers or shared memory, which *can* sometimes lower occupancy. See if there's a difference.
+
+---
+
+## 2. Memory Workload Analysis Page
+
+This is crucial for understanding the optimization's effect.
+
+* **Select Section:** Go to the **Memory Workload Analysis** page (select it from the dropdown at the top or the navigation pane).
+* **Throughput Charts:** Look at the **Memory Throughput** charts (L1/TEX Cache, L2 Cache, Device Memory).
+    * Compare the **Device Memory (DRAM)** throughput between the two kernels. `tiled_matmul` should achieve significantly *higher* DRAM throughput because it reuses data loaded into shared memory, reducing trips to global memory but making better use of the bandwidth when it *does* access it.
+* **Cache Hit Rates:** Check the **L1/TEX Cache** and **L2 Cache** sections.
+    * `tiled_matmul` should have much higher **L1 Hit Rates** because threads within a block load data into shared memory (`tile` array) and reuse it multiple times.
+    * `naive_matmul` likely has poor L1 hit rates as data isn't effectively reused at that level.
+
+---
+
+## 3. Source Page (Optional but useful)
+
+* **Select Section:** Go to the **Source** page.
+* **Correlate Metrics to Code:** Nsight Compute attempts to map performance metrics back to specific lines of CUDA C++ code.
+    * For `naive_matmul`, look at the inner loop line: `sum += A[row*N + k] * B[k*N + col];`. You'll likely see high counts for global memory loads associated with this line.
+    * For `tiled_matmul` (you'll need the code open separately or hope ncu linked it), compare the lines loading into shared memory (`tile[...] = ...`) versus the lines computing from shared memory (`sum += tile[...] * tile[...]`). The global loads should have fewer transactions overall, while shared memory loads/stores will be high.
+
+---
+
+## Key Questions to Answer:
+
+* How much faster is `tiled_matmul` than `naive_matmul`? (Check Duration).
+* Did the primary bottleneck shift from Memory towards Compute? (Check SOL).
+* What evidence shows improved memory access efficiency? (Check DRAM Throughput, L1 Hit Rate).
+
+Start exploring these sections. Let me know what you find for the Durations and the SOL percentages for both kernels! 🕵️‍♀️

@@ -46,5 +46,3 @@ nsight_analysis/
 # Any local credentials
 *.json # Be careful: this ignores hw_specs.json too. Consider removing or being more specific.
 *.key
-
-nsight_analysis/
