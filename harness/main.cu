@@ -16,6 +16,9 @@ extern "C" __global__ void branch_divergence(float* data, int N);
 extern "C" __global__ void atomic_histogram(int* hist, const int* data, int N, int bins);
 extern "C" __global__ void high_reg_pressure(float* data, int N);
 extern "C" __global__ void parallel_reduction(float *data, float *result, int N);
+// --- ADDED DECLARATION FOR NEW KERNEL ---
+extern "C" __global__ void tiled_matmul(const float* A, const float* B, float* C, int N);
+// --- END ADDED DECLARATION ---
 
 // Helper to check for CUDA errors
 #define CUDA_CHECK(err) { \
@@ -56,7 +59,7 @@ void time_kernel(const std::string& kernel_name, std::function<void()> kernel_la
 }
 
 int main() {
-    int N = 4096; // Matrix/vector dimension
+    int N = 2048; // Matrix/vector dimension
     int data_size_float = N * N * sizeof(float);
     int data_size_int = N * N * sizeof(int);
 
@@ -77,20 +80,20 @@ int main() {
     });
 
     // 2. Naive Matrix Multiply
-    dim3 threadsPerBlock(16, 16);
-    dim3 numBlocks( (N + 15) / 16, (N + 15) / 16);
+    dim3 threadsPerBlockMatMul(16, 16); // Use a distinct variable name
+    dim3 numBlocksMatMul( (N + 15) / 16, (N + 15) / 16); // Use a distinct variable name
     time_kernel("naive_matmul", [&]() {
-        naive_matmul<<<numBlocks, threadsPerBlock>>>(dA, dB, dC, N);
+        naive_matmul<<<numBlocksMatMul, threadsPerBlockMatMul>>>(dA, dB, dC, N);
     });
 
     // 3. Naive Transpose
     time_kernel("naive_transpose", [&]() {
-        naive_transpose<<<numBlocks, threadsPerBlock>>>(dA, dB, N);
+        naive_transpose<<<numBlocksMatMul, threadsPerBlockMatMul>>>(dA, dB, N); // Can reuse grid/block dims
     });
 
     // 4. Tiled Transpose
     time_kernel("tiled_transpose", [&]() {
-        tiled_transpose<<<numBlocks, threadsPerBlock>>>(dA, dB, N);
+        tiled_transpose<<<numBlocksMatMul, threadsPerBlockMatMul>>>(dA, dB, N); // Can reuse grid/block dims
     });
 
     // 5. Shared Memory Bank Conflict
@@ -110,7 +113,7 @@ int main() {
 
     // 8. Atomic Contention (Histogram)
     int bins = 64;
-    CUDA_CHECK(cudaMemset(dIntB, 0, bins * sizeof(int)));
+    CUDA_CHECK(cudaMemset(dIntB, 0, bins * sizeof(int))); // Initialize histogram bins
     time_kernel("atomic_histogram", [&]() {
         atomic_histogram<<<(N*N + 255)/256, 256>>>(dIntB, dIntA, N*N, bins);
     });
@@ -125,8 +128,19 @@ int main() {
     float* d_reduction_out;
     CUDA_CHECK(cudaMallocManaged(&d_reduction_out, reduction_blocks * sizeof(float)));
     time_kernel("parallel_reduction", [&]() {
-        parallel_reduction<<<reduction_blocks, 512, 512*sizeof(float)>>>(dA, d_reduction_out, N*N);
+        // Shared memory size is blockDim.x * sizeof(float), blockDim.x is 512 here
+        parallel_reduction<<<reduction_blocks, 512, 512 * sizeof(float)>>>(dA, d_reduction_out, N*N);
     });
+
+    // --- ADDED CALL FOR NEW KERNEL ---
+    // 11. Tiled Matrix Multiply
+    // Use TILE_DIM=32 as defined in the kernel
+    dim3 threadsPerBlockTiled(32, 32);
+    dim3 numBlocksTiled( (N + 31) / 32, (N + 31) / 32);
+    time_kernel("tiled_matmul", [&]() {
+        tiled_matmul<<<numBlocksTiled, threadsPerBlockTiled>>>(dA, dB, dC, N);
+    });
+    // --- END ADDED CALL ---
 
     printf("\nAll kernels executed.\n");
 
