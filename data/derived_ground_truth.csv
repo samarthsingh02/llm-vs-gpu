@@ -1,0 +1,12 @@
+kernel_name,Compute (SM) Throughput,DRAM Throughput,L1/TEX Cache Throughput,L1/TEX Hit Rate,L2 Cache Throughput,L2 Hit Rate,Mem Pipes Busy,SM Busy,Warp Cycles Per Issued Instruction,ground_truth_label
+atomic_histogram,4.72,3.55,9.65,0.0,9.34,88.9,4.72,1.29,750.07,LATENCY-BOUND
+bank_conflict,0.6,2.24,35.46,0.0,1.25,68.99,0.6,0.3,41.09,LATENCY-BOUND
+branch_divergence,16.51,94.46,38.14,45.95,40.28,63.9,16.51,9.3,103.09,MEMORY-BOUND
+high_reg_pressure,12.36,92.38,18.66,49.41,28.13,50.04,12.36,6.71,143.94,MEMORY-BOUND
+naive_matmul,98.79,37.01,98.83,87.14,22.3,50.05,98.79,32.95,42.26,Likely COMPUTE-BOUND
+naive_transpose,11.68,67.77,83.25,55.49,73.07,77.76,11.68,6.95,129.15,MEMORY-BOUND
+parallel_reduction,73.62,69.33,78.42,0.3,16.43,1.5,73.62,35.81,28.43,MIXED(Compute/Memory)
+saxpy,10.99,93.91,14.09,32.14,28.56,33.31,10.99,5.16,182.96,MEMORY-BOUND
+strided_global,6.65,67.12,21.64,0.0,36.32,50.05,6.65,5.57,155.83,MEMORY-BOUND
+tiled_matmul,80.97,22.97,81.2,0.0,13.05,47.4,80.97,28.23,36.38,COMPUTE-BOUND
+tiled_transpose,71.08,49.75,71.22,34.83,26.97,65.16,71.08,35.83,29.93,MIXED/OTHER
