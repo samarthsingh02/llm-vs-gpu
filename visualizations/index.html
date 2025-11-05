@@ -1,0 +1,363 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GPU Performance Analysis - Visualization Gallery</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 30px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            text-align: center;
+        }
+        
+        .header h1 {
+            color: #333;
+            margin: 0 0 10px 0;
+            font-size: 2.5em;
+            font-weight: bold;
+        }
+        
+        .header p {
+            color: #666;
+            font-size: 1.2em;
+            margin: 0;
+        }
+        
+        .stats {
+            display: flex;
+            justify-content: space-around;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+        
+        .stat {
+            background: rgba(255, 255, 255, 0.9);
+            padding: 15px 25px;
+            border-radius: 10px;
+            margin: 5px;
+            text-align: center;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+        
+        .stat-number {
+            font-size: 2em;
+            font-weight: bold;
+            color: #4ECDC4;
+        }
+        
+        .stat-label {
+            color: #666;
+            font-size: 0.9em;
+        }
+        
+        .category {
+            margin-bottom: 40px;
+        }
+        
+        .category-header {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.2);
+        }
+        
+        .category-title {
+            color: #333;
+            margin: 0;
+            font-size: 1.8em;
+            font-weight: bold;
+        }
+        
+        .visualization-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 25px;
+        }
+        
+        .viz-card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        
+        .viz-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.4);
+        }
+        
+        .viz-image {
+            width: 100%;
+            height: 250px;
+            object-fit: cover;
+            object-position: center;
+        }
+        
+        .viz-content {
+            padding: 20px;
+        }
+        
+        .viz-title {
+            color: #333;
+            margin: 0 0 10px 0;
+            font-size: 1.3em;
+            font-weight: bold;
+        }
+        
+        .viz-description {
+            color: #666;
+            margin: 0 0 15px 0;
+            line-height: 1.5;
+        }
+        
+        .viz-link {
+            display: inline-block;
+            background: linear-gradient(45deg, #4ECDC4, #44A08D);
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 25px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+        
+        .viz-link:hover {
+            background: linear-gradient(45deg, #44A08D, #4ECDC4);
+            transform: scale(1.05);
+        }
+        
+        .footer {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 40px;
+            text-align: center;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.2);
+        }
+        
+        .category-colors {
+            'Summary': '#FF6B6B',
+            'Performance Analysis': '#4ECDC4',
+            'LLM Analysis': '#45B7D1',
+            'Statistical Analysis': '#96CEB4'
+        }
+        
+        @media (max-width: 768px) {
+            .visualization-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .stats {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .header h1 {
+                font-size: 2em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎨 GPU Performance Analysis</h1>
+            <p>Comprehensive Visualization Gallery - LLM vs Hardware Ground Truth</p>
+            
+            <div class="stats">
+                <div class="stat">
+                    <div class="stat-number">12</div>
+                    <div class="stat-label">Total Visualizations</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-number">4</div>
+                    <div class="stat-label">Categories</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-number">63.6%</div>
+                    <div class="stat-label">LLM Accuracy</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-number">11</div>
+                    <div class="stat-label">Kernels Analyzed</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="category">
+            <div class="category-header">
+                <h2 class="category-title">Summary</h2>
+            </div>
+            
+            <div class="visualization-grid">
+
+                <div class="viz-card">
+                    <img src="executive_dashboard.png" alt="Executive Dashboard" class="viz-image">
+                    <div class="viz-content">
+                        <h3 class="viz-title">Executive Dashboard</h3>
+                        <p class="viz-description">Comprehensive overview with key metrics, accuracy summary, and performance distribution</p>
+                        <a href="executive_dashboard.png" target="_blank" class="viz-link">View Full Size</a>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <div class="category">
+            <div class="category-header">
+                <h2 class="category-title">Performance Analysis</h2>
+            </div>
+            
+            <div class="visualization-grid">
+
+                <div class="viz-card">
+                    
+                    <div class="viz-content">
+                        <h3 class="viz-title">3D Performance Landscape (Interactive)</h3>
+                        <p class="viz-description">Interactive 3D plot for exploring kernel performance characteristics</p>
+                        <a href="3d_performance_landscape.html" target="_blank" class="viz-link">View Interactive</a>
+                    </div>
+                </div>
+
+                <div class="viz-card">
+                    <img src="3d_performance_landscape.png" alt="3D Performance Landscape" class="viz-image">
+                    <div class="viz-content">
+                        <h3 class="viz-title">3D Performance Landscape</h3>
+                        <p class="viz-description">3D visualization of kernel performance characteristics</p>
+                        <a href="3d_performance_landscape.png" target="_blank" class="viz-link">View Full Size</a>
+                    </div>
+                </div>
+
+                <div class="viz-card">
+                    <img src="cache_performance_analysis.png" alt="Cache Performance Analysis" class="viz-image">
+                    <div class="viz-content">
+                        <h3 class="viz-title">Cache Performance Analysis</h3>
+                        <p class="viz-description">Box plots showing cache hit rates and throughput by bottleneck type</p>
+                        <a href="cache_performance_analysis.png" target="_blank" class="viz-link">View Full Size</a>
+                    </div>
+                </div>
+
+                <div class="viz-card">
+                    <img src="optimization_comparison.png" alt="Optimization Impact Analysis" class="viz-image">
+                    <div class="viz-content">
+                        <h3 class="viz-title">Optimization Impact Analysis</h3>
+                        <p class="viz-description">Before/after comparison showing the impact of kernel optimizations</p>
+                        <a href="optimization_comparison.png" target="_blank" class="viz-link">View Full Size</a>
+                    </div>
+                </div>
+
+                <div class="viz-card">
+                    <img src="performance_scatter.png" alt="Performance Efficiency Landscape" class="viz-image">
+                    <div class="viz-content">
+                        <h3 class="viz-title">Performance Efficiency Landscape</h3>
+                        <p class="viz-description">Scatter plot showing compute vs memory throughput with bottleneck classification</p>
+                        <a href="performance_scatter.png" target="_blank" class="viz-link">View Full Size</a>
+                    </div>
+                </div>
+
+                <div class="viz-card">
+                    <img src="simple_radar_charts.png" alt="Performance Radar Charts" class="viz-image">
+                    <div class="viz-content">
+                        <h3 class="viz-title">Performance Radar Charts</h3>
+                        <p class="viz-description">Multi-metric radar charts comparing key kernels across performance dimensions</p>
+                        <a href="simple_radar_charts.png" target="_blank" class="viz-link">View Full Size</a>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <div class="category">
+            <div class="category-header">
+                <h2 class="category-title">LLM Analysis</h2>
+            </div>
+            
+            <div class="visualization-grid">
+
+                <div class="viz-card">
+                    <img src="prediction_accuracy_analysis.png" alt="LLM Prediction Accuracy Analysis" class="viz-image">
+                    <div class="viz-content">
+                        <h3 class="viz-title">LLM Prediction Accuracy Analysis</h3>
+                        <p class="viz-description">Detailed analysis of LLM prediction accuracy across different metrics and conditions</p>
+                        <a href="prediction_accuracy_analysis.png" target="_blank" class="viz-link">View Full Size</a>
+                    </div>
+                </div>
+
+                <div class="viz-card">
+                    <img src="prediction_confidence_analysis.png" alt="Prediction Confidence Analysis" class="viz-image">
+                    <div class="viz-content">
+                        <h3 class="viz-title">Prediction Confidence Analysis</h3>
+                        <p class="viz-description">Analysis of LLM prediction accuracy across different performance ranges and conditions</p>
+                        <a href="prediction_confidence_analysis.png" target="_blank" class="viz-link">View Full Size</a>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <div class="category">
+            <div class="category-header">
+                <h2 class="category-title">Statistical Analysis</h2>
+            </div>
+            
+            <div class="visualization-grid">
+
+                <div class="viz-card">
+                    <img src="correlation_heatmap.png" alt="Hardware Metrics Correlation Matrix" class="viz-image">
+                    <div class="viz-content">
+                        <h3 class="viz-title">Hardware Metrics Correlation Matrix</h3>
+                        <p class="viz-description">Correlation analysis between all hardware performance metrics</p>
+                        <a href="correlation_heatmap.png" target="_blank" class="viz-link">View Full Size</a>
+                    </div>
+                </div>
+
+                <div class="viz-card">
+                    <img src="feature_importance_analysis.png" alt="Feature Importance Analysis" class="viz-image">
+                    <div class="viz-content">
+                        <h3 class="viz-title">Feature Importance Analysis</h3>
+                        <p class="viz-description">Machine learning analysis showing which metrics are most predictive of bottleneck types</p>
+                        <a href="feature_importance_analysis.png" target="_blank" class="viz-link">View Full Size</a>
+                    </div>
+                </div>
+
+                <div class="viz-card">
+                    <img src="simple_distribution_plots.png" alt="Performance Distribution Analysis" class="viz-image">
+                    <div class="viz-content">
+                        <h3 class="viz-title">Performance Distribution Analysis</h3>
+                        <p class="viz-description">Histograms and box plots showing distribution of performance metrics by bottleneck type</p>
+                        <a href="simple_distribution_plots.png" target="_blank" class="viz-link">View Full Size</a>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <div class="footer">
+            <p><strong>Generated on:</strong> November 05, 2025 at 09:35 PM</p>
+            <p><strong>Project:</strong> LLM vs GPU Performance Analysis | <strong>Team:</strong> GPU Performance Research</p>
+        </div>
+    </div>
+</body>
+</html>

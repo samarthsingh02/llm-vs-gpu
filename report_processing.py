@@ -1,10 +1,23 @@
 import pandas as pd
 import os
+import re
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.metrics import confusion_matrix, classification_report
+import numpy as np
 
-# --- Configuration ---
+# Set matplotlib and seaborn styling for prettier plots
+plt.rcParams['font.family'] = 'sans-serif'
+plt.rcParams['font.sans-serif'] = ['Arial', 'DejaVu Sans', 'Liberation Sans']
+plt.rcParams['axes.labelweight'] = 'bold'
+plt.rcParams['figure.autolayout'] = True
+sns.set_palette("husl")
+
+# --- Configuration -- -
 NCU_CSV_PATH = 'ncu_report_details.csv'
 OUTPUT_CSV_PATH = 'data/derived_ground_truth.csv'
 LLM_CSV_PATH = 'data/llm_predictions.csv'
+MISMATCH_CSV_PATH = 'data/mismatched_predictions.csv'
 
 # Define the metrics we absolutely need for classification
 # Match the human-readable names present in ncu_report_details.csv
@@ -33,317 +46,360 @@ print("--- Phase 1: Processing Nsight Compute Data ---")
 
 # Load the detailed report - try specifying utf-16 encoding
 try:
+    # First, read just a few lines to find the header
     with open(NCU_CSV_PATH, 'r', encoding='utf-16') as f:
-        lines = f.readlines()
+        lines = []
+        for i, line in enumerate(f):
+            lines.append(line)
+            if i > 50:  # Only read first 50 lines to find header
+                break
+    
     skiprows = 0
     for i, line in enumerate(lines):
-        if line.strip().startswith('"ID"'):
-             skiprows = i
-             break
-        if i > 20:
-             print("Warning: Could not reliably determine header row start. Assuming 0.")
-             skiprows = 0
-             break
-
-    print(f"Attempting to read CSV starting from row {skiprows} with UTF-16 encoding...")
-    ncu_df_long = pd.read_csv(NCU_CSV_PATH, encoding='utf-16', skiprows=skiprows)
-
-except (UnicodeDecodeError, FileNotFoundError) as e:
-    print(f"Failed to read with UTF-16 (Error: {e}). Trying latin-1...")
+        if KERNEL_NAME_COL in line:
+            skiprows = i
+            break
+    
+    print(f"Found header at row {skiprows}")
+    
+    # Now read the CSV in chunks to handle large files
+    chunk_list = []
     try:
-        with open(NCU_CSV_PATH, 'r', encoding='latin-1') as f:
-            lines = f.readlines()
-        skiprows = 0
-        for i, line in enumerate(lines):
-             if line.strip().startswith('"ID"'):
-                 skiprows = i
-                 break
-             if i > 20:
-                 print("Warning: Could not reliably determine header row start. Assuming 0.")
-                 skiprows = 0
-                 break
-        print(f"Attempting to read CSV starting from row {skiprows} with latin-1 encoding...")
-        ncu_df_long = pd.read_csv(NCU_CSV_PATH, encoding='latin-1', skiprows=skiprows)
-    except Exception as e_inner:
-        print(f"CRITICAL ERROR: Error reading CSV with fallback encoding: {e_inner}")
-        exit()
+        chunk_iter = pd.read_csv(NCU_CSV_PATH, encoding='utf-16', skiprows=skiprows, chunksize=1000)
+        for chunk in chunk_iter:
+            # Filter each chunk to only include metrics we care about
+            if 'Metric Name' in chunk.columns:
+                all_metrics = REQUIRED_METRIC_NAMES + OPTIONAL_METRIC_NAMES
+                filtered_chunk = chunk[chunk['Metric Name'].isin(all_metrics)]
+                if not filtered_chunk.empty:
+                    chunk_list.append(filtered_chunk)
+        
+        # Combine all chunks
+        if chunk_list:
+            df_ncu_raw = pd.concat(chunk_list, ignore_index=True)
+        else:
+            print("No relevant metrics found in the CSV file")
+            exit(1)
+            
+    except UnicodeDecodeError:
+        # Fallback to latin-1 encoding
+        chunk_iter = pd.read_csv(NCU_CSV_PATH, encoding='latin-1', skiprows=skiprows, chunksize=1000)
+        for chunk in chunk_iter:
+            if 'Metric Name' in chunk.columns:
+                all_metrics = REQUIRED_METRIC_NAMES + OPTIONAL_METRIC_NAMES
+                filtered_chunk = chunk[chunk['Metric Name'].isin(all_metrics)]
+                if not filtered_chunk.empty:
+                    chunk_list.append(filtered_chunk)
+        
+        if chunk_list:
+            df_ncu_raw = pd.concat(chunk_list, ignore_index=True)
+        else:
+            print("No relevant metrics found in the CSV file")
+            exit(1)
 
-# Filter for the metrics we need
-all_needed_metrics = REQUIRED_METRIC_NAMES + OPTIONAL_METRIC_NAMES
-ncu_df_filtered = ncu_df_long[ncu_df_long['Metric Name'].isin(all_needed_metrics)].copy()
-
-# *** ADDED DEBUGGING PRINT ***
-print("\nUnique metric names found after filtering (before pivot):")
-if ncu_df_filtered.empty:
-    print("  >> DataFrame is empty - No specified metrics were found!")
-    print("  >> Check the 'Metric Name' column in ncu_report_details.csv for the correct names.")
-    print(f"  >> Names currently searched for: {all_needed_metrics}")
-else:
-    print(ncu_df_filtered['Metric Name'].unique())
-print("-" * 30)
-# *** END DEBUGGING PRINT ***
-
-# Exit if no required metrics were found at all
-if ncu_df_filtered[ncu_df_filtered['Metric Name'].isin(REQUIRED_METRIC_NAMES)].empty:
-     print("CRITICAL ERROR: None of the required metric names were found in the CSV.")
-     print(f"Required names searched for: {REQUIRED_METRIC_NAMES}")
-     # As a fallback, try to detect close alternatives that sometimes appear
-     # and guide the user.
-     print("Here are some sample metric names detected in your file:")
-     try:
-         print(ncu_df_long['Metric Name'].dropna().unique()[:25])
-     except Exception:
-         pass
-     exit()
-
-
-# Convert Metric Value to numeric, handling commas and errors
-ncu_df_filtered['Metric Value'] = ncu_df_filtered['Metric Value'].astype(str).str.replace(',', '', regex=False)
-ncu_df_filtered['Metric Value'] = pd.to_numeric(ncu_df_filtered['Metric Value'], errors='coerce')
-
-# --- Pivot the table ---
-print("Pivoting the table to get metrics as columns...")
-try:
-    ncu_df_wide = ncu_df_filtered.pivot_table(
-        index=KERNEL_NAME_COL,
-        columns='Metric Name',
-        values='Metric Value',
-        aggfunc='first'
-    )
-except KeyError as e:
-     print(f"CRITICAL ERROR during pivot: Missing column - {e}. Check KERNEL_NAME_COL.")
-     print("Columns available:", list(ncu_df_filtered.columns))
-     exit()
-
-# Check if required metric columns exist after pivot
-missing_required = [col for col in REQUIRED_METRIC_NAMES if col not in ncu_df_wide.columns]
-if missing_required:
-    print("\nCRITICAL ERROR: Required metric columns missing after pivoting:")
-    for col in missing_required:
-        print(f"- {col}")
-    print("Available columns after pivot:", list(ncu_df_wide.columns))
-    print("This might happen if the metrics existed but had non-numeric values that became NaN.")
-    exit()
-
-# Report on optional metrics
-found_optional = [col for col in OPTIONAL_METRIC_NAMES if col in ncu_df_wide.columns]
-missing_optional = [col for col in OPTIONAL_METRIC_NAMES if col not in ncu_df_wide.columns]
-if found_optional:
-    print("\nFound optional latency metrics:")
-    for col in found_optional: print(f"- {col}")
-if missing_optional:
-    print("\nDid not find optional latency metrics:")
-    for col in missing_optional: print(f"- {col}")
-
-# --- Define Bottleneck Classification Function ---
-def classify_bottleneck(row):
-    sm_usage = row.get(REQUIRED_METRIC_NAMES[0], 0)
-    dram_usage = row.get(REQUIRED_METRIC_NAMES[1], 0)
-
-    if pd.isna(sm_usage) or pd.isna(dram_usage):
-        return "UNKNOWN_DATA_ISSUE"
-
-    if sm_usage > 60 and dram_usage < 30:
-        return "COMPUTE-BOUND"
-    elif dram_usage > 60 and sm_usage < 30:
-        return "MEMORY-BOUND"
-    elif sm_usage < 40 and dram_usage < 40:
-        return "LATENCY-BOUND"
-    elif sm_usage > 50 and dram_usage > 50:
-        return "MIXED(Compute/Memory)"
-    elif sm_usage >= 40 and dram_usage >= 40:
-         return "MIXED/OTHER"
-    elif sm_usage > dram_usage:
-         return "Likely COMPUTE-BOUND"
-    else:
-         return "Likely MEMORY-BOUND"
-
-
-# Apply classification
-ncu_df_wide['ground_truth_label'] = ncu_df_wide.apply(classify_bottleneck, axis=1)
-
-# Prepare final ground truth DataFrame
-ground_truth_data = ncu_df_wide.reset_index()
-ground_truth_data.rename(columns={KERNEL_NAME_COL: 'kernel_name'}, inplace=True)
-
-print("\nGround Truth DataFrame Head (after pivoting):")
-display_cols = ['kernel_name', 'ground_truth_label'] + [col for col in REQUIRED_METRIC_NAMES if col in ground_truth_data.columns] # Use list comprehension for safety
-print(ground_truth_data[display_cols].head())
-
-# Save derived ground truth
-try:
-    if not os.path.exists('data'):
-        os.makedirs('data')
-    ground_truth_data.to_csv(OUTPUT_CSV_PATH, index=False)
-    print(f"\nDerived ground truth saved to {OUTPUT_CSV_PATH}")
-except Exception as e:
-    print(f"\nError saving derived ground truth: {e}")
-
-print("\n--- Phase 1 Complete ---")
-
-# --- Phase 2: LLM Prediction Processing ---
-# (Code remains the same as previous version)
-print("\n--- Phase 2: Processing LLM Predictions ---")
-try:
-    df_llm = pd.read_csv(LLM_CSV_PATH)
-
-    if df_llm['kernel'].str.contains(r'^\d+_').any():
-         print("Standardizing LLM kernel names (removing prefix like '01_')...")
-         df_llm['kernel_name'] = df_llm['kernel'].str.split('_', n=1).str[1]
-    else:
-         print("LLM kernel names seem standard, using as is.")
-         df_llm['kernel_name'] = df_llm['kernel']
-
-    error_labels = ['API_ERROR', 'ERROR', 'FILE_NOT_FOUND', 'UNEXPECTED_ERROR']
-    df_llm['llm_label'] = df_llm['label'].apply(lambda x: 'ERROR_PREDICTION' if isinstance(x, str) and x.upper() in error_labels else x)
-    df_llm['llm_label'] = df_llm['llm_label'].astype(str).str.upper()
-
-    print("\nLLM Predictions DataFrame Head (cleaned):")
-    print(df_llm[['kernel_name', 'llm_label', 'rationale']].head())
-    print("\n--- Phase 2 Complete ---")
+    print(f"Successfully loaded '{NCU_CSV_PATH}' with {len(df_ncu_raw)} rows (filtered for relevant metrics).")
 
 except FileNotFoundError:
-    print(f"CRITICAL ERROR: LLM predictions file not found at {LLM_CSV_PATH}")
-    exit()
+    print(f"CRITICAL ERROR: Nsight Compute report '{NCU_CSV_PATH}' not found.")
+    print("Please run 'ncu --page details -o ncu_report --csv --force-overwrite ./harness.exe' first.")
+    exit(1)
 except Exception as e:
-    print(f"CRITICAL ERROR: Failed to process LLM predictions: {e}")
-    exit()
+    print(f"CRITICAL ERROR: Failed to read '{NCU_CSV_PATH}'. Error: {e}")
+    exit(1)
 
 
-# --- Phase 3: Comparative Analysis ---
-# (Code remains the same as previous version)
-print("\n--- Phase 3: Comparing Ground Truth and LLM Predictions ---")
+def clean_kernel_name(name):
+    """Cleans up the mangled kernel names from NCU."""
+    # This regex is complex because template arguments can be nested
+    # It tries to find the core name before the first '<'
+    match = re.search(r'^(?:[a-zA-Z0-9_]+::)*([a-zA-Z0-9_]+)(?:<.*>)?$', str(name))
+    if match:
+        return match.group(1)
+    return str(name)
 
-df_llm_subset = df_llm[['kernel_name', 'llm_label', 'rationale']]
-gt_display_cols = ['kernel_name', 'ground_truth_label'] + [col for col in REQUIRED_METRIC_NAMES + found_optional if col in ground_truth_data.columns]
-df_gt_subset = ground_truth_data[gt_display_cols]
+# Ensure 'Metric Name' column exists
+if 'Metric Name' not in df_ncu_raw.columns:
+    print(f"CRITICAL ERROR: 'Metric Name' column not found in '{NCU_CSV_PATH}'.")
+    print("Please ensure you exported the 'details' page from Nsight Compute.")
+    print(f"Found columns: {df_ncu_raw.columns.tolist()}")
+    exit(1)
 
-merged_df = pd.merge(df_gt_subset, df_llm_subset, on='kernel_name', how='inner')
+# --- Pivoting the Data ---
+try:
+    # Filter for only the metrics we care about
+    all_metrics = REQUIRED_METRIC_NAMES + OPTIONAL_METRIC_NAMES
+    df_filtered = df_ncu_raw[df_ncu_raw['Metric Name'].isin(all_metrics)]
 
-if merged_df.empty:
-    print("\nCRITICAL ERROR: Merging failed. No common kernel names found.")
-    print("Ground truth kernel names:", df_gt_subset['kernel_name'].unique())
-    print("LLM kernel names:", df_llm_subset['kernel_name'].unique())
-    exit()
-else:
-     print(f"\nSuccessfully merged {len(merged_df)} kernels.")
+    # Convert Metric Value to numeric, coercing errors (like '%', ',') to NaN
+    df_filtered['Metric Value'] = pd.to_numeric(df_filtered['Metric Value'], errors='coerce')
 
-from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
-import seaborn as sns
-import matplotlib.pyplot as plt
+    # Pivot the table
+    df_wide = df_filtered.pivot_table(
+        index=KERNEL_NAME_COL,
+        columns='Metric Name',
+        values='Metric Value'
+    ).reset_index()
 
-all_labels_gt = sorted(merged_df['ground_truth_label'].unique())
-all_labels_llm = sorted(merged_df['llm_label'].unique())
-all_labels = sorted(list(set(all_labels_gt) | set(all_labels_llm)))
-if "ERROR_PREDICTION" in all_labels:
-     all_labels.remove("ERROR_PREDICTION")
-     all_labels.append("ERROR_PREDICTION")
+    # Clean up kernel names
+    # Create a simple name (e.g., 'saxpy') and a full name (e.g., '01_saxpy.cu')
+    df_wide['kernel_name_simple'] = df_wide[KERNEL_NAME_COL].apply(clean_kernel_name)
+    
+    # Map simple name back to the original filename (e.g., 'saxpy' -> '01_saxpy.cu')
+    # This relies on the kernel files being named correctly
+    kernel_files = [f for f in os.listdir('kernels') if f.endswith('.cu')]
+    name_map = {clean_kernel_name(f.replace('.cu', '')): f for f in kernel_files}
+    
+    df_wide['kernel_name'] = df_wide['kernel_name_simple'].map(name_map)
+    
+    # Handle any kernels that couldn't be mapped (e.g., if 'kernels/' dir is missing)
+    df_wide['kernel_name'] = df_wide['kernel_name'].fillna(df_wide['kernel_name_simple'])
 
-y_true = merged_df['ground_truth_label']
-y_pred = merged_df['llm_label']
+    # Set kernel_name as the index for easy lookup
+    df_wide = df_wide.set_index('kernel_name')
+    
+    print("\nPivoted NCU Data:")
+    print(df_wide[REQUIRED_METRIC_NAMES].head())
 
-accuracy = accuracy_score(y_true, y_pred)
-print(f"\nOverall Accuracy: {accuracy:.2f}")
+except KeyError:
+    print("\nCRITICAL ERROR: Pivoting failed. This can happen if the required metric names are wrong.")
+    print(f"We looked for: {REQUIRED_METRIC_NAMES}")
+    print("Available unique metrics in the CSV:")
+    print(df_ncu_raw['Metric Name'].unique()[:20]) # Show first 20 unique metrics
+    exit(1)
+except Exception as e:
+    print(f"An error occurred during data pivoting: {e}")
+    exit(1)
 
-print("\nClassification Report:")
-print(classification_report(y_true, y_pred, labels=all_labels, zero_division=0))
 
-print("\nConfusion Matrix (Rows: True, Columns: Predicted):")
-cm = confusion_matrix(y_true, y_pred, labels=all_labels)
-print(cm)
+def classify_bottleneck(row):
+    """Applies heuristics to classify a kernel based on its metrics."""
+    # Get the required metrics, default to 0 if they are missing (e.g., NaN)
+    sm_throughput = row.get(REQUIRED_METRIC_NAMES[0], 0)
+    dram_throughput = row.get(REQUIRED_METRIC_NAMES[1], 0)
 
-plt.figure(figsize=(10, 8))
-sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=all_labels, yticklabels=all_labels)
-plt.xlabel('Predicted Label')
-plt.ylabel('True Label')
-plt.title('Confusion Matrix')
-plt.savefig('confusion_matrix.png')
-print("\nConfusion matrix saved as confusion_matrix.png")
-# plt.show()
+    # --- Classification Heuristics ---
+    if sm_throughput > 60 and dram_throughput < 30:
+        return "Compute-Bound"
+    elif dram_throughput > 60 and sm_throughput < 30:
+        return "Memory-Bound"
+    elif sm_throughput < 20 and dram_throughput < 20:
+        # Both are low, indicating a stall
+        return "Latency-Bound"
+    elif sm_throughput > 40 and dram_throughput > 40:
+        # Both are significantly utilized
+        return "MIXED(Compute/Memory)"
+    elif sm_throughput > 40:
+        return "Likely COMPUTE-BOUND"
+    elif dram_throughput > 40:
+        return "Likely MEMORY-BOUND"
+    else:
+        # Default fallback if no other rule matches
+        return "MIXED/OTHER"
 
-mismatched = merged_df[merged_df['ground_truth_label'] != merged_df['llm_label']]
+# Apply classification
+df_wide['ground_truth_label'] = df_wide.apply(classify_bottleneck, axis=1)
 
+# Save the derived ground truth
+df_ground_truth = df_wide[['ground_truth_label'] + REQUIRED_METRIC_NAMES + [col for col in OPTIONAL_METRIC_NAMES if col in df_wide.columns]]
+df_ground_truth.to_csv(OUTPUT_CSV_PATH)
+
+print(f"\nSuccessfully processed NCU data and saved ground truth to '{OUTPUT_CSV_PATH}'")
+print("\n--- Ground Truth Classification ---")
+print(df_ground_truth[['ground_truth_label', REQUIRED_METRIC_NAMES[0], REQUIRED_METRIC_NAMES[1]]])
+
+
+# --- Phase 2: Load LLM Predictions ---
+
+print("\n--- Phase 2: Loading LLM Predictions ---")
+
+try:
+    df_llm = pd.read_csv(LLM_CSV_PATH)
+    
+    # Handle different column name possibilities
+    if 'kernel' in df_llm.columns:
+        df_llm = df_llm.rename(columns={'kernel': 'kernel_name'})
+    
+    # Clean kernel names to match ground truth (remove prefixes like "01_", "02_", etc.)
+    def clean_llm_kernel_name(name):
+        # Remove number prefixes like "01_", "02_", etc.
+        cleaned = re.sub(r'^\d+_', '', str(name))
+        # Remove .cu extension if present
+        cleaned = cleaned.replace('.cu', '')
+        return cleaned
+    
+    df_llm['kernel_name'] = df_llm['kernel_name'].apply(clean_llm_kernel_name)
+    
+    # Standardize LLM labels (e.g., "MEMORY-BOUND" -> "Memory-Bound")
+    df_llm['label'] = df_llm['label'].str.title().str.replace("Compute-Bound", "Compute-Bound").str.replace("Memory-Bound", "Memory-Bound").str.replace("Latency-Bound", "Latency-Bound")
+    df_llm = df_llm.set_index('kernel_name')
+    print(f"Successfully loaded LLM predictions from '{LLM_CSV_PATH}'")
+    print("LLM predictions with cleaned kernel names:")
+    print(df_llm.head())
+
+except FileNotFoundError:
+    print(f"CRITICAL ERROR: LLM predictions file '{LLM_CSV_PATH}' not found.")
+    print("Please run 'python scripts/predict_llms.py' first.")
+    exit(1)
+except Exception as e:
+    print(f"CRITICAL ERROR: Failed to read '{LLM_CSV_PATH}'. Error: {e}")
+    exit(1)
+
+
+# --- Phase 3: Merge & Compare ---
+
+print("\n--- Phase 3: Merging Ground Truth and LLM Predictions ---")
+
+# Merge the two dataframes on the kernel_name index
+merged_df = df_ground_truth.join(df_llm, how='inner')
+
+# Handle cases where LLM prediction might be missing or failed
+merged_df['label'] = merged_df['label'].fillna('ERROR_PREDICTION')
+merged_df = merged_df.rename(columns={'label': 'llm_label', 'rationale': 'llm_rationale'})
+
+# Calculate accuracy
+merged_df['is_correct'] = (merged_df['ground_truth_label'] == merged_df['llm_label'])
+accuracy = merged_df['is_correct'].mean() * 100
+
+print(f"\n--- Overall Accuracy: {accuracy:.2f}% ({merged_df['is_correct'].sum()} / {len(merged_df)}) ---")
+
+# --- Full Classification Report ---
+print("\n--- Classification Report ---")
+# Get all unique labels from both ground truth and predictions
+labels = np.unique(merged_df[['ground_truth_label', 'llm_label']].values)
+report = classification_report(merged_df['ground_truth_label'], merged_df['llm_label'], labels=labels, zero_division=0)
+print(report)
+
+# --- Confusion Matrix ---
+print("\n--- Generating Confusion Matrix Plot ---")
+cm = confusion_matrix(merged_df['ground_truth_label'], merged_df['llm_label'], labels=labels)
+
+# Set up the plot with simpler styling to avoid memory issues
+plt.style.use('default')
+fig, ax = plt.subplots(figsize=(10, 8))
+
+# Create the heatmap with simpler styling
+sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
+            xticklabels=labels.tolist(), yticklabels=labels.tolist(), 
+            annot_kws={"size": 12, "weight": "bold"},
+            cbar_kws={"shrink": 0.8},
+            linewidths=0.5,
+            square=True, ax=ax)
+
+# Enhanced title and labels
+ax.set_title('Confusion Matrix: LLM vs Ground Truth\nGPU Performance Bottleneck Classification', 
+             fontsize=16, fontweight='bold', pad=15)
+ax.set_xlabel('Predicted Label (LLM)', fontsize=12, fontweight='bold')
+ax.set_ylabel('Actual Label (Ground Truth)', fontsize=12, fontweight='bold')
+
+# Rotate labels for better readability
+plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
+plt.setp(ax.get_yticklabels(), rotation=0)
+
+plt.tight_layout()
+plt.savefig('confusion_matrix.png', dpi=150, bbox_inches='tight')
+print("Successfully saved enhanced 'confusion_matrix.png'")
+plt.close()
+
+
+# --- Mismatch Analysis ---
 print("\n--- Mismatch Analysis ---")
-if mismatched.empty:
-    print("No mismatches found!")
+mismatched_df = merged_df[~merged_df['is_correct']]
+mismatched_df = mismatched_df[['ground_truth_label', 'llm_label', 'llm_rationale'] + REQUIRED_METRIC_NAMES]
+
+if mismatched_df.empty:
+    print("No mismatches found! Perfect classification.")
 else:
-    mismatch_details = []
-    for index, row in mismatched.iterrows():
-        # Safely get metric values, providing 'N/A' if the column doesn't exist
-        sm_metric_val = row.get(REQUIRED_METRIC_NAMES[0], float('nan'))
-        dram_metric_val = row.get(REQUIRED_METRIC_NAMES[1], float('nan'))
+    print(f"Found {len(mismatched_df)} mismatches. Saving details to '{MISMATCH_CSV_PATH}'")
+    mismatched_df.to_csv(MISMATCH_CSV_PATH)
+    
+    # Print details of mismatches
+    for kernel_name, row in mismatched_df.iterrows():
+        print(f"\n[MISMATCH] Kernel: {kernel_name}")
+        print(f"  > Ground Truth: {row['ground_truth_label']}")
+        print(f"  > LLM Predicted:  {row['llm_label']}")
+        print(f"  > LLM Rationale:  {row['llm_rationale']}")
+        print(f"  > Hardware Data:  SM={row[REQUIRED_METRIC_NAMES[0]]:.1f}%, DRAM={row[REQUIRED_METRIC_NAMES[1]]:.1f}%")
 
-        detail = {
-            'Kernel': row['kernel_name'],
-            'Ground Truth': row['ground_truth_label'],
-            'LLM Predicted': row['llm_label'],
-            'LLM Rationale': row['rationale'],
-            f"Nsight SM ({REQUIRED_METRIC_NAMES[0]})": f"{sm_metric_val:.1f}%" if not pd.isna(sm_metric_val) else 'N/A',
-            f"Nsight DRAM ({REQUIRED_METRIC_NAMES[1]})": f"{dram_metric_val:.1f}%" if not pd.isna(dram_metric_val) else 'N/A'
-        }
-        
-        # Add optional metrics if they exist
-        for col in found_optional:
-            # Use the full metric name found in the CSV as the key
-            metric_val_opt = row.get(col, float('nan')) # Get the value safely
-            # Format the value for printing/saving
-            formatted_val = f"{metric_val_opt:.1f}" if not pd.isna(metric_val_opt) else 'N/A'
-            # Check if '%' should be added based on Metric Unit (Requires loading Metric Unit earlier)
-            # For simplicity now, we'll just add the value. You might refine this later.
-            detail[f"Nsight Opt ({col})"] = formatted_val # Use full name
-            
-        mismatch_details.append(detail)
-        print(f"\nKernel: {detail['Kernel']}")
-        print(f"  Ground Truth: {detail['Ground Truth']}")
-        print(f"  LLM Predicted: {detail['LLM Predicted']}")
-        print(f"  LLM Rationale: {str(detail['LLM Rationale'])[:200]}...")
-        print(f"  Nsight SM: {detail[f'Nsight SM ({REQUIRED_METRIC_NAMES[0]})']}")
-        print(f"  Nsight DRAM: {detail[f'Nsight DRAM ({REQUIRED_METRIC_NAMES[1]})']}")
-        # Print optional metrics found
-        for col in found_optional:
-             if f"Nsight Opt ({col})" in detail: # Check if key exists
-                 print(f"  Nsight Opt ({col}): {detail[f'Nsight Opt ({col})']}")
-        print("-" * 20)
 
-    try:
-        mismatch_df = pd.DataFrame(mismatch_details)
-        mismatch_df.to_csv('data/mismatched_predictions.csv', index=False)
-        print("\nMismatch details saved to data/mismatched_predictions.csv")
-    except Exception as e:
-        print(f"\nError saving mismatch details: {e}")
+# --- Phase 4: Plotting Performance Profile ---
 
-print("\nGenerating Roofline-style plot...")
-plt.figure(figsize=(12, 8))
-color_map = {
-    'COMPUTE-BOUND': 'red', 'MEMORY-BOUND': 'blue', 'LATENCY-BOUND': 'green',
-    'MIXED(Compute/Memory)': 'purple', 'MIXED/OTHER': 'orange',
-    'Likely COMPUTE-BOUND': 'lightcoral', 'Likely MEMORY-BOUND': 'lightblue',
-    'ERROR_PREDICTION': 'black', 'UNKNOWN_DATA_ISSUE': 'grey'
-    }
+# This is the new, improved function
+def plot_comparison(df):
+    """
+    Plots a grouped bar chart comparing Compute (SM) Throughput and DRAM Throughput
+    for each kernel, saving it to 'performance_profile_comparison.png'.
+    """
+    print("\n--- Phase 4: Generating Performance Profile Comparison Plot ---")
+    
+    # Ensure the required metrics are present
+    if 'Compute (SM) Throughput' not in df.columns or 'DRAM Throughput' not in df.columns:
+        print("Required metrics for plotting are missing. Skipping plot generation.")
+        return
 
-# Ensure required columns exist and drop rows with NaN in them before plotting
-plot_df = merged_df.dropna(subset=[REQUIRED_METRIC_NAMES[0], REQUIRED_METRIC_NAMES[1]])
+    # Create a DataFrame for plotting
+    plot_df = df[['Compute (SM) Throughput', 'DRAM Throughput']].copy()
+    
+    # Clean kernel names for better labels (e.g., '01_saxpy.cu' -> '01_saxpy')
+    plot_df.index = plot_df.index.str.replace(r'\.cu$', '', regex=True)
 
-sns.scatterplot(
-    data=plot_df, x=REQUIRED_METRIC_NAMES[0], y=REQUIRED_METRIC_NAMES[1],
-    hue='ground_truth_label', palette=color_map, style='llm_label',
-    s=150, alpha=0.8
-)
+    # --- Enhanced Plotting ---
+    
+    # Set up the figure with better styling
+    plt.style.use('default')
+    fig, ax = plt.subplots(figsize=(16, 9))
+    
+    # Define a beautiful color palette
+    colors = ['#FF6B6B', '#4ECDC4']  # Coral red and teal
+    
+    # Create the bar plot
+    plot_df.plot(
+        kind='bar', 
+        width=0.75,
+        color=colors,
+        ax=ax,
+        edgecolor='white',
+        linewidth=1
+    )
+    
+    # Enhance the title and labels
+    ax.set_title('GPU Kernel Performance Profile\nCompute vs. Memory Throughput Analysis', 
+                 fontsize=18, fontweight='bold', pad=20)
+    ax.set_ylabel('Throughput (% of Peak Performance)', fontsize=14, fontweight='bold')
+    ax.set_xlabel('CUDA Kernels', fontsize=14, fontweight='bold')
+    
+    # Customize tick labels
+    ax.tick_params(axis='x', labelsize=12, rotation=45)
+    ax.tick_params(axis='y', labelsize=12)
+    
+    # Add grid for better readability
+    ax.grid(axis='y', linestyle='--', alpha=0.7, color='gray')
+    ax.set_axisbelow(True)
+    
+    # Enhance legend
+    ax.legend(['Compute (SM) Throughput', 'Memory (DRAM) Throughput'], 
+              loc='upper right', fontsize=12, frameon=True, 
+              title='Metric Type', title_fontsize=13)
+    
+    # Add reference lines
+    ax.axhline(y=100, color='red', linestyle='--', linewidth=1.5, alpha=0.8)
+    ax.axhline(y=50, color='orange', linestyle=':', linewidth=1, alpha=0.6)
+    
+    # Set y-axis limits for better visualization
+    ax.set_ylim(0, max(plot_df.max()) * 1.1)
+    
+    # Enhance background
+    fig.patch.set_facecolor('white')
+    
+    # Use tight_layout to ensure labels fit
+    plt.tight_layout()
+    
+    # Save the figure
+    plot_filename = 'performance_profile_comparison.png'
+    plt.savefig(plot_filename, dpi=150, bbox_inches='tight')
+    print(f"Successfully saved enhanced plot to '{plot_filename}'")
+    plt.close(fig)
 
-for i in range(plot_df.shape[0]):
-     plt.text(plot_df[REQUIRED_METRIC_NAMES[0]].iloc[i] + 0.7,
-              plot_df[REQUIRED_METRIC_NAMES[1]].iloc[i],
-              plot_df['kernel_name'].iloc[i], fontsize=9)
+# Call the plotting function
+plot_comparison(df_wide)
 
-plt.title('Kernel Performance Profile (Ground Truth Hue, LLM Prediction Marker Style)')
-plt.xlabel(f'SM Throughput ({REQUIRED_METRIC_NAMES[0]})') # Use actual name
-plt.ylabel(f'DRAM Throughput ({REQUIRED_METRIC_NAMES[1]})') # Use actual name
-plt.xlim(-5, 105); plt.ylim(-5, 105); plt.grid(True)
-plt.legend(title='Bottleneck (GT Hue / LLM Style)', bbox_to_anchor=(1.05, 1), loc='upper left')
-plt.tight_layout(rect=(0, 0, 0.85, 1))
-plt.savefig('performance_profile_comparison.png')
-print("Performance profile plot saved as performance_profile_comparison.png")
-# plt.show()
-
-print("\n--- Phase 3 Complete ---")
-print("\nAnalysis finished. Check generated CSV files and PNG plots.")
+print("\n--- Analysis Complete ---")

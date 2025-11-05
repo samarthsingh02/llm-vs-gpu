@@ -8,41 +8,93 @@ __pycache__/
 env/
 venv/
 *.egg-info/
+dist/
+*.whl
 
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints/
 
 # VS Code
 .vscode/
+*.code-workspace
+
+# PyCharm
+.idea/
 
 # OS files
 .DS_Store
 Thumbs.db
+*.tmp
+*.temp
 
 # Build artifacts
 build/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
 *.exe
 *.out
 *.obj
 *.o
+*.so
+*.dll
 *.log
 
-# Data & models (Keep data/llm_predictions.csv if you want to track it)
-# data/ # Commented out if you want to track ground_truth.csv and llm_predictions.csv
-# *.csv
+# CUDA/GPU specific
+*.ptx
+*.cubin
+*.fatbin
+
+# Large data files (keep essential CSV files but exclude large datasets)
 *.h5
 *.pt
 *.pth
+*.pkl
+*.npy
+*.npz
 
-# Reports (Original section)
-# report/Report.pdf # Assuming you might create a final PDF report here
-
-# --- ADDED ---
-# Nsight Compute Reports & Analysis
+# Nsight Compute Reports & Analysis (large binary files)
 *.ncu-rep
 nsight_analysis/
-# --- END ADDED ---
+ncu_report_details.csv
 
-# Any local credentials
-*.json # Be careful: this ignores hw_specs.json too. Consider removing or being more specific.
-*.key
+# Large image/video files
+*.mp4
+*.avi
+*.mov
+*.mkv
+
+# Documentation builds
+docs/_build/
+*.pdf
+
+# Temporary files
+*.swp
+*.swo
+*~
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Coverage reports
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+
+# Test outputs
+.pytest_cache/
+.tox/
+
+# Backup files
+*.bak
+*.backup
+
+# Keep important data files
+!data/ground_truth.csv
+!data/llm_predictions.csv
+!data/derived_ground_truth.csv
+!data/hw_specs.json
